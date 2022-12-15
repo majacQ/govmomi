@@ -32,7 +32,7 @@ load test_helper
     vcsim_env
 
     # need to set up some dependencies
-    govc cluster.create Workload-Cluster
+    govc cluster.create WCP-Cluster
     assert_success
 
     govc dvs.create "DVPG-Management Network"
@@ -41,7 +41,7 @@ load test_helper
     govc namespace.cluster.enable \
       --service-cidr 10.96.0.0/23 \
       --pod-cidrs 10.244.0.0/20 \
-      --cluster "Workload-Cluster" \
+      --cluster "WCP-Cluster" \
       --control-plane-dns 8.8.8.8 \
       --worker-dns 8.8.8.8 \
       --control-plane-dns-search-domains example.com \
@@ -67,10 +67,10 @@ load test_helper
 @test "namespace.cluster.disable" {
     vcsim_env
 
-    govc cluster.create Workload-Cluster
+    govc cluster.create WCP-Cluster
     assert_success
 
-    govc namespace.cluster.disable --cluster Workload-Cluster
+    govc namespace.cluster.disable --cluster WCP-Cluster
     assert_success
 }
 
@@ -85,4 +85,32 @@ load test_helper
   rm "wcp-support-bundle-$id-"*.tar
 
   govc namespace.logs.download -cluster DC0_C0 - | tar -xvOf-
+}
+
+@test "namespace.service.ls" {
+    vcsim_env
+
+    run govc namespace.service.ls
+    assert_success
+    assert_matches service1
+    assert_matches service2
+
+    run govc namespace.service.ls -l
+    assert_success
+    assert_matches ACTIVATED
+    assert_matches mock-service-1
+}
+
+@test "namespace.service.info" {
+    vcsim_env
+
+    run govc namespace.service.info service1
+    assert_success
+    assert_matches mock-service-1
+    assert_matches ACTIVATED
+    assert_matches "Description of service1"
+
+    run govc namespace.service.info -json service2
+    assert_matches DE-ACTIVATED
+
 }

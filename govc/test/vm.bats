@@ -319,6 +319,12 @@ load test_helper
   # destroy powers off vm before destruction
   run govc vm.destroy $vm
   assert_success
+
+  run govc vm.destroy '*'
+  assert_success
+
+  run govc find / -type m
+  assert_success "" # expect all VMs are gone
 }
 
 @test "vm.create pvscsi" {
@@ -449,7 +455,7 @@ load test_helper
   run govc vm.change -nested-hv-enabled=true -vm "$id"
   assert_success
 
-  hv=$(govc vm.info -json "$id" | jq '.[][0].Config.NestedHVEnabled')
+  hv=$(govc vm.info -json "$id" | jq '.[][0].Config.nestedHVEnabled')
   assert_equal "$hv" "true"
 }
 
@@ -764,12 +770,12 @@ load test_helper
   vm="DC0_H0_VM0"
   clone=$(new_id)
 
-  run govc vm.clone -vm "$vm" -annotation $$ "$clone"
+  run govc vm.clone -vm "$vm" -host.ipath /DC0/host/DC0_C0/DC0_C0_H0 -annotation $$ "$clone"
   assert_success
 
-  backing=$(govc device.info -json -vm "$clone" disk-* | jq .Devices[].Backing)
-  assert_equal false "$(jq .EagerlyScrub <<<"$backing")"
-  assert_equal true "$(jq .ThinProvisioned <<<"$backing")"
+  backing=$(govc device.info -json -vm "$clone" disk-* | jq .Devices[].backing)
+  assert_equal false "$(jq .eagerlyScrub <<<"$backing")"
+  assert_equal true "$(jq .thinProvisioned <<<"$backing")"
 
   run govc object.collect -s "/$GOVC_DATACENTER/vm/$clone" config.annotation
   assert_success $$
@@ -794,24 +800,37 @@ load test_helper
   run govc vm.clone -cluster DC0_C0 -vm "$vm" "$clone"
   assert_failure # already exists
 
+  run govc datastore.cp "$clone"/"$clone".vmx "$clone"/"$clone".vmx.copy
+  run govc vm.destroy "$clone"
+  run govc datastore.mv "$clone"/"$clone".vmx.copy "$clone"/"$clone".vmx # leave vmx file
   run govc vm.clone -force -vm "$vm" "$clone"
-  assert_success # clone vm with the same name
+  assert_success # clone vm with the same name vmx file
 
   vm=$(new_empty_vm)
   run govc vm.disk.create -vm "$vm" -thick -eager -size 10M -name "$vm/data.vmdk"
   assert_success
 
-  backing=$(govc device.info -json -vm "$vm" disk-* | jq .Devices[].Backing)
-  assert_equal true "$(jq .EagerlyScrub <<<"$backing")"
-  assert_equal false "$(jq .ThinProvisioned <<<"$backing")"
+  backing=$(govc device.info -json -vm "$vm" disk-* | jq .Devices[].backing)
+  assert_equal true "$(jq .eagerlyScrub <<<"$backing")"
+  assert_equal false "$(jq .thinProvisioned <<<"$backing")"
 
   clone=$(new_id)
   run govc vm.clone -vm "$vm" "$clone"
   assert_success
 
-  backing=$(govc device.info -json -vm "$clone" disk-* | jq .Devices[].Backing)
-  assert_equal true "$(jq .EagerlyScrub <<<"$backing")"
-  assert_equal false "$(jq .ThinProvisioned <<<"$backing")"
+  backing=$(govc device.info -json -vm "$clone" disk-* | jq .Devices[].backing)
+  assert_equal true "$(jq .eagerlyScrub <<<"$backing")"
+  assert_equal false "$(jq .thinProvisioned <<<"$backing")"
+
+  # test that each vm has a unique vmdk path
+  for item in fileName uuid;  do
+    items=$(govc object.collect -json -type m / config.hardware.device | \
+              jq ".changeSet[].val.VirtualDevice[].backing.$item | select(. != null)")
+
+    nitems=$(wc -l <<<"$items")
+    uitems=$(sort -u <<<"$items" | wc -l)
+    assert_equal "$nitems" "$uitems"
+  done
 }
 
 @test "vm.clone change resources" {
@@ -1053,10 +1072,10 @@ load test_helper
   run govc vm.option.info -vm DC0_H0_VM0
   assert_success
 
-  family=$(govc vm.option.info -json ubuntu64Guest | jq -r .GuestOSDescriptor[].Family)
+  family=$(govc vm.option.info -json ubuntu64Guest | jq -r .guestOSDescriptor[].family)
   assert_equal linuxGuest "$family"
 
-  family=$(govc vm.option.info -json windows8_64Guest | jq -r .GuestOSDescriptor[].Family)
+  family=$(govc vm.option.info -json windows8_64Guest | jq -r .guestOSDescriptor[].family)
   assert_equal windowsGuest "$family"
 
   run govc vm.option.info enoent
@@ -1100,6 +1119,16 @@ load test_helper
   run govc object.collect -s vm/DC0_H0_VM0 guest.ipAddress
   assert_success 10.0.0.43
 
+  run govc object.collect -s vm/DC0_H0_VM0 summary.guest.ipAddress
+  assert_success 10.0.0.43
+
+  run govc object.collect -s vm/DC0_H0_VM0 summary.guest.hostName
+  assert_success windoze
+
+  run govc vm.info DC0_H0_VM0
+  assert_success
+  assert_matches 10.0.0.43
+
   run govc object.collect -s vm/DC0_H0_VM0 guest.hostName
   assert_success windoze
 
@@ -1130,12 +1159,15 @@ load test_helper
   run govc object.collect -s vm/DC0_H0_VM0 guest.ipAddress
   assert_success 10.0.0.45
 
-  run govc vm.power -off DC0_H0_VM0
-  assert_success
-
   host=$(govc ls -L "$(govc object.collect -s vm/DC0_H0_VM0 runtime.host)")
   run govc host.maintenance.enter "$host"
   assert_success
+
+  run govc vm.power -off DC0_H0_VM0
+  assert_success
+
+  run govc vm.power -on DC0_H0_VM0
+  assert_failure # InvalidState
 
   run govc vm.customize -vm DC0_H0_VM0 -ip 10.0.0.45 -netmask 255.255.0.0 -type Linux
   assert_failure # InvalidState

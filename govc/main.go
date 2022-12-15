@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014-2017 VMware, Inc. All Rights Reserved.
+Copyright (c) 2014-2022 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"github.com/vmware/govmomi/govc/cli"
 	_ "github.com/vmware/govmomi/govc/cluster"
 	_ "github.com/vmware/govmomi/govc/cluster/group"
+	_ "github.com/vmware/govmomi/govc/cluster/module"
 	_ "github.com/vmware/govmomi/govc/cluster/override"
 	_ "github.com/vmware/govmomi/govc/cluster/rule"
 	_ "github.com/vmware/govmomi/govc/datacenter"
@@ -33,6 +34,7 @@ import (
 	_ "github.com/vmware/govmomi/govc/datastore/vsan"
 	_ "github.com/vmware/govmomi/govc/device"
 	_ "github.com/vmware/govmomi/govc/device/cdrom"
+	_ "github.com/vmware/govmomi/govc/device/clock"
 	_ "github.com/vmware/govmomi/govc/device/floppy"
 	_ "github.com/vmware/govmomi/govc/device/pci"
 	_ "github.com/vmware/govmomi/govc/device/scsi"
@@ -64,14 +66,17 @@ import (
 	_ "github.com/vmware/govmomi/govc/host/vswitch"
 	_ "github.com/vmware/govmomi/govc/importx"
 	_ "github.com/vmware/govmomi/govc/library"
+	_ "github.com/vmware/govmomi/govc/library/policy"
 	_ "github.com/vmware/govmomi/govc/library/session"
 	_ "github.com/vmware/govmomi/govc/library/subscriber"
+	_ "github.com/vmware/govmomi/govc/library/trust"
 	_ "github.com/vmware/govmomi/govc/license"
 	_ "github.com/vmware/govmomi/govc/logs"
 	_ "github.com/vmware/govmomi/govc/ls"
 	_ "github.com/vmware/govmomi/govc/metric"
 	_ "github.com/vmware/govmomi/govc/metric/interval"
 	_ "github.com/vmware/govmomi/govc/namespace/cluster"
+	_ "github.com/vmware/govmomi/govc/namespace/service"
 	_ "github.com/vmware/govmomi/govc/object"
 	_ "github.com/vmware/govmomi/govc/option"
 	_ "github.com/vmware/govmomi/govc/permissions"
@@ -79,6 +84,8 @@ import (
 	_ "github.com/vmware/govmomi/govc/role"
 	_ "github.com/vmware/govmomi/govc/session"
 	_ "github.com/vmware/govmomi/govc/sso/group"
+	_ "github.com/vmware/govmomi/govc/sso/idp"
+	_ "github.com/vmware/govmomi/govc/sso/lpp"
 	_ "github.com/vmware/govmomi/govc/sso/service"
 	_ "github.com/vmware/govmomi/govc/sso/user"
 	_ "github.com/vmware/govmomi/govc/storage/policy"
@@ -87,8 +94,13 @@ import (
 	_ "github.com/vmware/govmomi/govc/tags/category"
 	_ "github.com/vmware/govmomi/govc/task"
 	_ "github.com/vmware/govmomi/govc/vapp"
+	_ "github.com/vmware/govmomi/govc/vcsa/access/consolecli"
+	_ "github.com/vmware/govmomi/govc/vcsa/access/dcui"
+	_ "github.com/vmware/govmomi/govc/vcsa/access/shell"
+	_ "github.com/vmware/govmomi/govc/vcsa/access/ssh"
 	_ "github.com/vmware/govmomi/govc/vcsa/log"
 	_ "github.com/vmware/govmomi/govc/vcsa/proxy"
+	_ "github.com/vmware/govmomi/govc/vcsa/shutdown"
 	_ "github.com/vmware/govmomi/govc/version"
 	_ "github.com/vmware/govmomi/govc/vm"
 	_ "github.com/vmware/govmomi/govc/vm/disk"

@@ -26,6 +26,7 @@ import (
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator/esx"
 	"github.com/vmware/govmomi/simulator/vpx"
+	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
@@ -210,6 +211,50 @@ func TestFolderVC(t *testing.T) {
 
 		if res.State != test.state {
 			t.Fatalf("%s", res.State)
+		}
+	}
+}
+
+func TestFolderSpecialCharaters(t *testing.T) {
+	content := vpx.ServiceContent
+	s := New(NewServiceInstance(SpoofContext(), content, vpx.RootFolder))
+
+	ts := s.NewServer()
+	defer ts.Close()
+
+	ctx := context.Background()
+	c, err := govmomi.NewClient(ctx, ts.URL, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f := object.NewRootFolder(c.Client)
+
+	tests := []struct {
+		name     string
+		expected string
+	}{
+		{`/`, `%2f`},
+		{`\`, `%5c`},
+		{`%`, `%25`},
+		// multiple special characters
+		{`%%`, `%25%25`},
+	}
+
+	for _, test := range tests {
+		ff, err := f.CreateFolder(ctx, test.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		o := Map.Get(ff.Reference())
+		if o == nil {
+			t.Fatalf("failed to find %#v", ff)
+		}
+
+		e := o.(mo.Entity).Entity()
+		if e.Name != test.expected {
+			t.Errorf("expected %s, got %s", test.expected, e.Name)
 		}
 	}
 }
@@ -563,4 +608,40 @@ func TestFolderCreateDVS(t *testing.T) {
 	if err == nil {
 		t.Error("expected error")
 	}
+}
+
+func TestPlaceVmsXCluster(t *testing.T) {
+	vpx := VPX()
+	vpx.Cluster = 3
+
+	Test(func(ctx context.Context, c *vim25.Client) {
+		finder := find.NewFinder(c, false)
+
+		spec := types.PlaceVmsXClusterSpec{}
+
+		pools, err := finder.ResourcePoolList(ctx, "/DC0/host/DC0_C*/*")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, pool := range pools {
+			spec.ResourcePools = append(spec.ResourcePools, pool.Reference())
+		}
+
+		spec.VmPlacementSpecs = []types.PlaceVmsXClusterSpecVmPlacementSpec{{
+			ConfigSpec: types.VirtualMachineConfigSpec{
+				Name: "test-vm",
+			},
+		}}
+
+		folder := object.NewRootFolder(c)
+		res, err := folder.PlaceVmsXCluster(ctx, spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(res.PlacementInfos) != len(spec.VmPlacementSpecs) {
+			t.Errorf("%d PlacementInfos vs %d VmPlacementSpecs", len(res.PlacementInfos), len(spec.VmPlacementSpecs))
+		}
+	}, vpx)
 }

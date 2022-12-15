@@ -30,6 +30,7 @@ import (
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/simulator/esx"
 	"github.com/vmware/govmomi/task"
+	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/types"
 )
 
@@ -264,6 +265,145 @@ func TestCreateVm(t *testing.T) {
 	}
 }
 
+func TestCreateVmWithSpecialCharaters(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected string
+	}{
+		{`/`, `%2f`},
+		{`\`, `%5c`},
+		{`%`, `%25`},
+		// multiple special characters
+		{`%%`, `%25%25`},
+		// slash-separated name
+		{`foo/bar`, `foo%2fbar`},
+	}
+
+	for _, test := range tests {
+		m := ESX()
+
+		Test(func(ctx context.Context, c *vim25.Client) {
+			finder := find.NewFinder(c, false)
+
+			dc, err := finder.DefaultDatacenter(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			finder.SetDatacenter(dc)
+			folders, err := dc.Folders(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			vmFolder := folders.VmFolder
+
+			ds, err := finder.DefaultDatastore(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			spec := types.VirtualMachineConfigSpec{
+				Name: test.name,
+				Files: &types.VirtualMachineFileInfo{
+					VmPathName: fmt.Sprintf("[%s]", ds.Name()),
+				},
+			}
+
+			pool := object.NewResourcePool(c, esx.ResourcePool.Self)
+
+			task, err := vmFolder.CreateVM(ctx, spec, pool, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			info, err := task.WaitForResult(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			vm := object.NewVirtualMachine(c, info.Result.(types.ManagedObjectReference))
+			name, err := vm.ObjectName(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name != test.expected {
+				t.Errorf("expected %s, got %s", test.expected, name)
+			}
+		}, m)
+	}
+}
+
+func TestCloneVm(t *testing.T) {
+	tests := []struct {
+		name   string
+		vmName string
+		config types.VirtualMachineCloneSpec
+		fail   bool
+	}{
+		{
+			"clone a vm",
+			"cloned-vm",
+			types.VirtualMachineCloneSpec{
+				Template: false,
+				PowerOn:  false,
+			},
+			false,
+		},
+		{
+			"vm name is duplicated",
+			"DC0_H0_VM0",
+			types.VirtualMachineCloneSpec{
+				Template: false,
+				PowerOn:  false,
+			},
+			true,
+		},
+	}
+
+	for _, test := range tests {
+		test := test // assign to local var since loop var is reused
+
+		t.Run(test.name, func(t *testing.T) {
+			m := VPX()
+			defer m.Remove()
+
+			Test(func(ctx context.Context, c *vim25.Client) {
+				finder := find.NewFinder(c, false)
+				dc, err := finder.DefaultDatacenter(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				folders, err := dc.Folders(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				vmFolder := folders.VmFolder
+
+				vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+				vm := object.NewVirtualMachine(c, vmm.Reference())
+
+				task, err := vm.Clone(ctx, vmFolder, test.vmName, test.config)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				err = task.Wait(ctx)
+				if test.fail {
+					if err == nil {
+						t.Errorf("%s: expected error", test.name)
+					}
+				} else {
+					if err != nil {
+						t.Errorf("%s: %s", test.name, err)
+					}
+				}
+			}, m)
+		})
+	}
+}
+
 func TestReconfigVmDevice(t *testing.T) {
 	ctx := context.Background()
 
@@ -370,6 +510,7 @@ func TestReconfigVmDevice(t *testing.T) {
 
 		// Need FileOperation=="" to add an existing disk, see object.VirtualMachine.configureDevice
 		disk.CapacityInKB = 0
+		disk.CapacityInBytes = 0
 		if err = vm.AddDevice(ctx, d); err != nil {
 			t.Error(err)
 		}
@@ -387,6 +528,441 @@ func TestReconfigVmDevice(t *testing.T) {
 		if err = vm.AddDevice(ctx, d); err == nil {
 			t.Error("expected FileNotFound error")
 		}
+	}
+}
+
+func TestConnectVmDevice(t *testing.T) {
+	ctx := context.Background()
+
+	m := ESX()
+	defer m.Remove()
+	err := m.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := m.Service.NewServer()
+	defer s.Close()
+
+	c, err := govmomi.NewClient(ctx, s.URL, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+	vm := object.NewVirtualMachine(c.Client, vmm.Reference())
+
+	l := object.VirtualDeviceList{} // used only for Connect/Disconnect function
+
+	tests := []struct {
+		description            string
+		changePower            func(context.Context) (*object.Task, error)
+		changeConnectivity     func(types.BaseVirtualDevice) error
+		expectedConnected      bool
+		expectedStartConnected bool
+	}{
+		{"disconnect when vm is on", nil, l.Disconnect, false, false},
+		{"connect when vm is on", nil, l.Connect, true, true},
+		{"power off vm", vm.PowerOff, nil, false, true},
+		{"disconnect when vm is off", nil, l.Disconnect, false, false},
+		{"connect when vm is off", nil, l.Connect, false, true},
+		{"power on vm when StartConnected is true", vm.PowerOn, nil, true, true},
+		{"power off vm and disconnect again", vm.PowerOff, l.Disconnect, false, false},
+		{"power on vm when StartConnected is false", vm.PowerOn, nil, false, false},
+	}
+
+	for _, testCase := range tests {
+		testCase := testCase // assign to local var since loop var is reused
+
+		t.Run(testCase.description, func(t *testing.T) {
+			if testCase.changePower != nil {
+				task, err := testCase.changePower(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				err = task.Wait(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if testCase.changeConnectivity != nil {
+				list, err := vm.Device(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				device := list.FindByKey(esx.EthernetCard.Key)
+				if device == nil {
+					t.Fatal("cloud not find EthernetCard")
+				}
+
+				err = testCase.changeConnectivity(device)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = vm.EditDevice(ctx, device)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			updatedList, err := vm.Device(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			updatedDevice := updatedList.FindByKey(esx.EthernetCard.Key)
+			if updatedDevice == nil {
+				t.Fatal("cloud not find EthernetCard")
+			}
+			conn := updatedDevice.GetVirtualDevice().Connectable
+
+			if conn.Connected != testCase.expectedConnected {
+				t.Errorf("unexpected Connected property. expected: %t, actual: %t",
+					testCase.expectedConnected, conn.Connected)
+			}
+			if conn.StartConnected != testCase.expectedStartConnected {
+				t.Errorf("unexpected StartConnected property. expected: %t, actual: %t",
+					testCase.expectedStartConnected, conn.StartConnected)
+			}
+		})
+	}
+}
+
+func TestVAppConfigAdd(t *testing.T) {
+	ctx := context.Background()
+
+	m := ESX()
+	defer m.Remove()
+	err := m.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := m.Service.NewServer()
+	defer s.Close()
+
+	c, err := govmomi.NewClient(ctx, s.URL, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+	vm := object.NewVirtualMachine(c.Client, vmm.Reference())
+
+	tests := []struct {
+		description      string
+		expectedErr      types.BaseMethodFault
+		spec             types.VirtualMachineConfigSpec
+		existingVMConfig *types.VirtualMachineConfigSpec
+		expectedProps    []types.VAppPropertyInfo
+	}{
+
+		{
+			description: "successfully add a new property",
+			spec: types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationAdd,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key:   int32(1),
+								Id:    "foo-id",
+								Value: "foo-value",
+							},
+						},
+					},
+				},
+			},
+			expectedProps: []types.VAppPropertyInfo{
+				{
+					Key:   int32(1),
+					Id:    "foo-id",
+					Value: "foo-value",
+				},
+			},
+		},
+		{
+			description: "return error when a property that exists is added",
+			expectedErr: new(types.InvalidArgument),
+			existingVMConfig: &types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationAdd,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key:   int32(2),
+								Id:    "foo-id",
+								Value: "foo-value",
+							},
+						},
+					},
+				},
+			},
+			spec: types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationAdd,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key: int32(2),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.description, func(t *testing.T) {
+			if testCase.existingVMConfig != nil {
+				rtask, _ := vm.Reconfigure(ctx, *testCase.existingVMConfig)
+				if err := rtask.Wait(ctx); err != nil {
+					t.Errorf("Reconfigure failed during test setup. err: %v", err)
+				}
+			}
+
+			err := vmm.updateVAppProperty(testCase.spec.VAppConfig.GetVmConfigSpec())
+			if !reflect.DeepEqual(err, testCase.expectedErr) {
+				t.Errorf("unexpected error in updating VApp property of VM. expectedErr: %v, actualErr: %v", testCase.expectedErr, err)
+			}
+
+			if testCase.expectedErr == nil {
+				props := vmm.Config.VAppConfig.GetVmConfigInfo().Property
+				// the testcase only has one VApp property, so ordering of the elements does not matter.
+				if !reflect.DeepEqual(props, testCase.expectedProps) {
+					t.Errorf("unexpected VApp properties. expected: %v, actual: %v", testCase.expectedProps, props)
+				}
+			}
+		})
+	}
+}
+
+func TestVAppConfigEdit(t *testing.T) {
+	ctx := context.Background()
+
+	m := ESX()
+	defer m.Remove()
+	err := m.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := m.Service.NewServer()
+	defer s.Close()
+
+	c, err := govmomi.NewClient(ctx, s.URL, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+	vm := object.NewVirtualMachine(c.Client, vmm.Reference())
+
+	tests := []struct {
+		description      string
+		expectedErr      types.BaseMethodFault
+		spec             types.VirtualMachineConfigSpec
+		existingVMConfig *types.VirtualMachineConfigSpec
+		expectedProps    []types.VAppPropertyInfo
+	}{
+
+		{
+			description: "successfully update a property that exists",
+			existingVMConfig: &types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationAdd,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key:   int32(1),
+								Id:    "foo-id",
+								Value: "foo-value",
+							},
+						},
+					},
+				},
+			},
+			spec: types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationEdit,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key:   int32(1),
+								Id:    "foo-id-updated",
+								Value: "foo-value-updated",
+							},
+						},
+					},
+				},
+			},
+			expectedProps: []types.VAppPropertyInfo{
+				{
+					Key:   int32(1),
+					Id:    "foo-id-updated",
+					Value: "foo-value-updated",
+				},
+			},
+		},
+		{
+			description: "return error when a property that doesn't exist is updated",
+			expectedErr: new(types.InvalidArgument),
+			spec: types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationEdit,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key: int32(2),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.description, func(t *testing.T) {
+			if testCase.existingVMConfig != nil {
+				rtask, _ := vm.Reconfigure(ctx, *testCase.existingVMConfig)
+				if err := rtask.Wait(ctx); err != nil {
+					t.Errorf("Reconfigure failed during test setup. err: %v", err)
+				}
+			}
+
+			err := vmm.updateVAppProperty(testCase.spec.VAppConfig.GetVmConfigSpec())
+			if !reflect.DeepEqual(err, testCase.expectedErr) {
+				t.Errorf("unexpected error in updating VApp property of VM. expectedErr: %v, actualErr: %v", testCase.expectedErr, err)
+			}
+
+			if testCase.expectedErr == nil {
+				props := vmm.Config.VAppConfig.GetVmConfigInfo().Property
+				// the testcase only has one VApp property, so ordering of the elements does not matter.
+				if !reflect.DeepEqual(props, testCase.expectedProps) {
+					t.Errorf("unexpected VApp properties. expected: %v, actual: %v", testCase.expectedProps, props)
+				}
+			}
+		})
+	}
+}
+
+func TestVAppConfigRemove(t *testing.T) {
+	ctx := context.Background()
+
+	m := ESX()
+	defer m.Remove()
+	err := m.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := m.Service.NewServer()
+	defer s.Close()
+
+	c, err := govmomi.NewClient(ctx, s.URL, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+	vm := object.NewVirtualMachine(c.Client, vmm.Reference())
+
+	tests := []struct {
+		description      string
+		expectedErr      types.BaseMethodFault
+		spec             types.VirtualMachineConfigSpec
+		existingVMConfig *types.VirtualMachineConfigSpec
+		expectedProps    []types.VAppPropertyInfo
+	}{
+		{
+			description: "returns success when a property that exists is removed",
+			existingVMConfig: &types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationAdd,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key: int32(1),
+							},
+						},
+					},
+				},
+			},
+			spec: types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationRemove,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key: int32(1),
+							},
+						},
+					},
+				},
+			},
+			expectedProps: []types.VAppPropertyInfo{},
+		},
+		{
+			description: "return error when a property that doesn't exist is removed",
+			expectedErr: new(types.InvalidArgument),
+			spec: types.VirtualMachineConfigSpec{
+				VAppConfig: &types.VmConfigSpec{
+					Property: []types.VAppPropertySpec{
+						{
+							ArrayUpdateSpec: types.ArrayUpdateSpec{
+								Operation: types.ArrayUpdateOperationRemove,
+							},
+							Info: &types.VAppPropertyInfo{
+								Key: int32(2),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.description, func(t *testing.T) {
+			if testCase.existingVMConfig != nil {
+				rtask, _ := vm.Reconfigure(ctx, *testCase.existingVMConfig)
+				if err := rtask.Wait(ctx); err != nil {
+					t.Errorf("Reconfigure failed during test setup. err: %v", err)
+				}
+			}
+
+			err := vmm.updateVAppProperty(testCase.spec.VAppConfig.GetVmConfigSpec())
+			if !reflect.DeepEqual(err, testCase.expectedErr) {
+				t.Errorf("unexpected error in updating VApp property of VM. expectedErr: %v, actualErr: %v", testCase.expectedErr, err)
+			}
+
+			if testCase.expectedErr == nil {
+				props := vmm.Config.VAppConfig.GetVmConfigInfo().Property
+				// the testcase only has one VApp property, so ordering of the elements does not matter.
+				if !reflect.DeepEqual(props, testCase.expectedProps) {
+					t.Errorf("unexpected VApp properties. expected: %v, actual: %v", testCase.expectedProps, props)
+				}
+			}
+		})
 	}
 }
 
@@ -704,6 +1280,341 @@ func TestCreateVmWithDevices(t *testing.T) {
 	}
 }
 
+func TestAddedDiskCapacity(t *testing.T) {
+	tests := []struct {
+		name                    string
+		capacityInBytes         int64
+		capacityInKB            int64
+		expectedCapacityInBytes int64
+		expectedCapacityInKB    int64
+	}{
+		{
+			"specify capacityInBytes",
+			512 * 1024,
+			0,
+			512 * 1024,
+			512,
+		},
+		{
+			"specify capacityInKB",
+			0,
+			512,
+			512 * 1024,
+			512,
+		},
+		{
+			"specify both",
+			512 * 1024,
+			512,
+			512 * 1024,
+			512,
+		},
+		{
+			"capacityInbytes takes precedence if two fields represents different capacity",
+			512 * 1024,
+			1024,
+			512 * 1024,
+			512,
+		},
+	}
+
+	for _, test := range tests {
+		test := test // assign to local var since loop var is reused
+		t.Run(test.name, func(t *testing.T) {
+			m := ESX()
+
+			Test(func(ctx context.Context, c *vim25.Client) {
+				vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+				vm := object.NewVirtualMachine(c, vmm.Reference())
+
+				ds := Map.Any("Datastore").(*Datastore)
+
+				devices, err := vm.Device(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				controller, err := devices.FindDiskController("")
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				disk := devices.CreateDisk(controller, ds.Reference(), "")
+				disk.CapacityInBytes = test.capacityInBytes
+				disk.CapacityInKB = test.capacityInKB
+
+				err = vm.AddDevice(ctx, disk)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				newDevices, err := vm.Device(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				disks := newDevices.SelectByType((*types.VirtualDisk)(nil))
+				if len(disks) == 0 {
+					t.Fatalf("len(disks)=%d", len(disks))
+				}
+
+				newDisk := disks[len(disks)-1].(*types.VirtualDisk)
+
+				if newDisk.CapacityInBytes != test.expectedCapacityInBytes {
+					t.Errorf("CapacityInBytes expected %d, got %d",
+						test.expectedCapacityInBytes, newDisk.CapacityInBytes)
+				}
+				if newDisk.CapacityInKB != test.expectedCapacityInKB {
+					t.Errorf("CapacityInKB expected %d, got %d",
+						test.expectedCapacityInKB, newDisk.CapacityInKB)
+				}
+
+			}, m)
+		})
+	}
+}
+
+func TestEditedDiskCapacity(t *testing.T) {
+	tests := []struct {
+		name                    string
+		capacityInBytes         int64
+		capacityInKB            int64
+		expectedCapacityInBytes int64
+		expectedCapacityInKB    int64
+		expectedErr             types.BaseMethodFault
+	}{
+		{
+			"specify same capacities as before",
+			10 * 1024 * 1024 * 1024, // 10GB
+			10 * 1024 * 1024,        // 10GB
+			10 * 1024 * 1024 * 1024, // 10GB
+			10 * 1024 * 1024,        // 10GB
+			nil,
+		},
+		{
+			"increase only capacityInBytes",
+			20 * 1024 * 1024 * 1024, // 20GB
+			10 * 1024 * 1024,        // 10GB
+			20 * 1024 * 1024 * 1024, // 20GB
+			20 * 1024 * 1024,        // 20GB
+			nil,
+		},
+		{
+			"increase only capacityInKB",
+			10 * 1024 * 1024 * 1024, // 10GB
+			20 * 1024 * 1024,        // 20GB
+			20 * 1024 * 1024 * 1024, // 20GB
+			20 * 1024 * 1024,        // 20GB
+			nil,
+		},
+		{
+			"increase both capacityInBytes and capacityInKB",
+			20 * 1024 * 1024 * 1024, // 20GB
+			20 * 1024 * 1024,        // 20GB
+			20 * 1024 * 1024 * 1024, // 20GB
+			20 * 1024 * 1024,        // 20GB
+			nil,
+		},
+		{
+			"increase both capacityInBytes and capacityInKB but value is different",
+			20 * 1024 * 1024 * 1024, // 20GB
+			30 * 1024 * 1024,        // 30GB
+			0,
+			0,
+			new(types.InvalidDeviceOperation),
+		},
+		{
+			"decrease capacity",
+			1 * 1024 * 1024 * 1024, // 1GB
+			1 * 1024 * 1024,        // 1GB
+			0,
+			0,
+			new(types.InvalidDeviceOperation),
+		},
+	}
+
+	for _, test := range tests {
+		test := test // assign to local var since loop var is reused
+		t.Run(test.name, func(t *testing.T) {
+			m := ESX()
+
+			Test(func(ctx context.Context, c *vim25.Client) {
+				vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+				vm := object.NewVirtualMachine(c, vmm.Reference())
+				ds := Map.Any("Datastore").(*Datastore)
+
+				// create a new 10GB disk
+				devices, err := vm.Device(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				controller, err := devices.FindDiskController("")
+				if err != nil {
+					t.Fatal(err)
+				}
+				disk := devices.CreateDisk(controller, ds.Reference(), "")
+				disk.CapacityInBytes = 10 * 1024 * 1024 * 1024 // 10GB
+				err = vm.AddDevice(ctx, disk)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				// edit its capacity
+				addedDevices, err := vm.Device(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				addedDisks := addedDevices.SelectByType((*types.VirtualDisk)(nil))
+				if len(addedDisks) == 0 {
+					t.Fatal("disk not found")
+				}
+				addedDisk := addedDisks[0].(*types.VirtualDisk)
+				addedDisk.CapacityInBytes = test.capacityInBytes
+				addedDisk.CapacityInKB = test.capacityInKB
+				err = vm.EditDevice(ctx, addedDisk)
+
+				if test.expectedErr != nil {
+					terr, ok := err.(task.Error)
+					if !ok {
+						t.Fatalf("error should be task.Error. actual: %T", err)
+					}
+
+					if !reflect.DeepEqual(terr.Fault(), test.expectedErr) {
+						t.Errorf("expectedErr: %v, actualErr: %v", test.expectedErr, terr.Fault())
+					}
+				} else {
+					// obtain the disk again
+					editedDevices, err := vm.Device(ctx)
+					if err != nil {
+						t.Fatal(err)
+					}
+					editedDisks := editedDevices.SelectByType((*types.VirtualDisk)(nil))
+					if len(editedDevices) == 0 {
+						t.Fatal("disk not found")
+					}
+					editedDisk := editedDisks[len(editedDisks)-1].(*types.VirtualDisk)
+
+					if editedDisk.CapacityInBytes != test.expectedCapacityInBytes {
+						t.Errorf("CapacityInBytes expected %d, got %d",
+							test.expectedCapacityInBytes, editedDisk.CapacityInBytes)
+					}
+					if editedDisk.CapacityInKB != test.expectedCapacityInKB {
+						t.Errorf("CapacityInKB expected %d, got %d",
+							test.expectedCapacityInKB, editedDisk.CapacityInKB)
+					}
+				}
+			}, m)
+		})
+	}
+}
+
+func TestReconfigureDevicesDatastoreFreespace(t *testing.T) {
+	tests := []struct {
+		name          string
+		reconfigure   func(context.Context, *object.VirtualMachine, *Datastore, object.VirtualDeviceList) error
+		freespaceDiff int64
+	}{
+		{
+			"create a new disk",
+			func(ctx context.Context, vm *object.VirtualMachine, ds *Datastore, l object.VirtualDeviceList) error {
+				controller, err := l.FindDiskController("")
+				if err != nil {
+					return err
+				}
+
+				disk := l.CreateDisk(controller, ds.Reference(), "")
+				disk.CapacityInBytes = 10 * 1024 * 1024 * 1024 // 10GB
+
+				if err := vm.AddDevice(ctx, disk); err != nil {
+					return err
+				}
+				return nil
+			},
+			-10 * 1024 * 1024 * 1024, // -10GB
+		},
+		{
+			"edit disk size",
+			func(ctx context.Context, vm *object.VirtualMachine, ds *Datastore, l object.VirtualDeviceList) error {
+				disks := l.SelectByType((*types.VirtualDisk)(nil))
+				if len(disks) == 0 {
+					return fmt.Errorf("disk not found")
+				}
+				disk := disks[len(disks)-1].(*types.VirtualDisk)
+
+				// specify same disk capacity
+				if err := vm.EditDevice(ctx, disk); err != nil {
+					return err
+				}
+				return nil
+			},
+			0,
+		},
+		{
+			"remove a disk and its files",
+			func(ctx context.Context, vm *object.VirtualMachine, ds *Datastore, l object.VirtualDeviceList) error {
+				disks := l.SelectByType((*types.VirtualDisk)(nil))
+				if len(disks) == 0 {
+					return fmt.Errorf("disk not found")
+				}
+				disk := disks[len(disks)-1].(*types.VirtualDisk)
+
+				if err := vm.RemoveDevice(ctx, false, disk); err != nil {
+					return err
+				}
+				return nil
+			},
+			10 * 1024 * 1024 * 1024, // 10GB
+		},
+		{
+			"remove a disk but keep its files",
+			func(ctx context.Context, vm *object.VirtualMachine, ds *Datastore, l object.VirtualDeviceList) error {
+				disks := l.SelectByType((*types.VirtualDisk)(nil))
+				if len(disks) == 0 {
+					return fmt.Errorf("disk not found")
+				}
+				disk := disks[len(disks)-1].(*types.VirtualDisk)
+
+				if err := vm.RemoveDevice(ctx, true, disk); err != nil {
+					return err
+				}
+				return nil
+			},
+			0,
+		},
+	}
+
+	for _, test := range tests {
+		test := test // assign to local var since loop var is reused
+		t.Run(test.name, func(t *testing.T) {
+			m := ESX()
+
+			Test(func(ctx context.Context, c *vim25.Client) {
+				vmm := Map.Any("VirtualMachine").(*VirtualMachine)
+				vm := object.NewVirtualMachine(c, vmm.Reference())
+
+				ds := Map.Any("Datastore").(*Datastore)
+				freespaceBefore := ds.Datastore.Summary.FreeSpace
+
+				devices, err := vm.Device(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				err = test.reconfigure(ctx, vm, ds, devices)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				freespaceAfter := ds.Datastore.Summary.FreeSpace
+
+				if freespaceAfter-freespaceBefore != test.freespaceDiff {
+					t.Errorf("difference of freespace expected %d, got %d",
+						test.freespaceDiff, freespaceAfter-freespaceBefore)
+				}
+			}, m)
+		})
+	}
+}
+
 func TestShutdownGuest(t *testing.T) {
 	// use the default vm for testing
 	ctx := context.Background()
@@ -797,6 +1708,10 @@ func TestVmSnapshot(t *testing.T) {
 	if err == errEmptyField {
 		t.Fatal("snapshot property should not be 'nil' if there are snapshots")
 	}
+	// NOTE: fieldValue cannot be used for nil check
+	if len(simVm.(*VirtualMachine).RootSnapshot) == 0 {
+		t.Fatal("rootSnapshot property should have elements if there are snapshots")
+	}
 
 	task, err = vm.CreateSnapshot(ctx, "child", "description", true, true)
 	if err != nil {
@@ -847,6 +1762,10 @@ func TestVmSnapshot(t *testing.T) {
 	if err == errEmptyField {
 		t.Fatal("snapshot property should not be 'nil' if there are snapshots")
 	}
+	// NOTE: fieldValue cannot be used for nil check
+	if len(simVm.(*VirtualMachine).RootSnapshot) == 0 {
+		t.Fatal("rootSnapshot property should have elements if there are snapshots")
+	}
 
 	_, err = vm.FindSnapshot(ctx, "child")
 	if err == nil {
@@ -866,6 +1785,10 @@ func TestVmSnapshot(t *testing.T) {
 	_, err = fieldValue(reflect.ValueOf(simVm), "snapshot")
 	if err != errEmptyField {
 		t.Fatal("snapshot property should be 'nil' if there are no snapshots")
+	}
+	// NOTE: fieldValue cannot be used for nil check
+	if len(simVm.(*VirtualMachine).RootSnapshot) != 0 {
+		t.Fatal("rootSnapshot property should not have elements if there are no snapshots")
 	}
 
 	_, err = vm.FindSnapshot(ctx, "root")

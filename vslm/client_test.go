@@ -20,12 +20,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kr/pretty"
+	"github.com/dougm/pretty"
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/cns"
-	cnstypes "github.com/vmware/govmomi/cns/types"
 	"github.com/vmware/govmomi/vim25/soap"
+	"github.com/vmware/govmomi/vim25/types"
+
+	cnstypes "github.com/vmware/govmomi/cns/types"
 )
 
 func TestClient(t *testing.T) {
@@ -116,4 +118,16 @@ func TestClient(t *testing.T) {
 	volumeCreateResult := (createTaskResult).(*cnstypes.CnsVolumeCreateResult)
 	t.Logf("volumeCreateResult %+v", volumeCreateResult)
 	t.Logf("Volume created sucessfully. volumeId: %s", volumeId)
+
+	err = globalObjectManager.SetControlFlags(ctx, types.ID{Id: volumeId}, []string{
+		string(types.VslmVStorageObjectControlFlagKeepAfterDeleteVm)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Control flag: FCD_KEEP_AFTER_DELETE_VM set for the volumeId: %s", volumeId)
+	err = globalObjectManager.ClearControlFlags(ctx, types.ID{Id: volumeId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Control flags removed the volumeId: %s", volumeId)
 }

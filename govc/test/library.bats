@@ -184,7 +184,7 @@ load test_helper
   library_id="$output"
 
   # link ovf/ova to datastore so we can test library.import with an http source
-  dir=$(govc datastore.info -json | jq -r .Datastores[].Info.Url)
+  dir=$(govc datastore.info -json | jq -r .Datastores[].Info.url)
   ln -s "$GOVC_IMAGES/$TTYLINUX_NAME."* "$dir"
 
   run govc library.import -pull my-content "https://$(govc env GOVC_URL)/folder/$TTYLINUX_NAME.ovf"
@@ -221,6 +221,9 @@ load test_helper
 }
 EOF
 
+  run govc library.deploy "my-content/$TTYLINUX_NAME" -options "$BATS_TMPDIR/ttylinux.json"
+  assert_failure # see issue #2599
+
   run govc library.deploy -options "$BATS_TMPDIR/ttylinux.json" "my-content/$TTYLINUX_NAME"
   assert_success
   rm "$BATS_TMPDIR/ttylinux.json"
@@ -228,12 +231,28 @@ EOF
   run govc vm.info -r ttylinux2
   assert_success
   assert_matches DC0_DVPG0
+  assert_matches 32MB
+  assert_matches "1 vCPU"
 
   run env GOVC_DATASTORE="" govc library.deploy "my-content/$TTYLINUX_NAME" ttylinux3 # datastore is not required
   assert_success
 
   run govc vm.destroy ttylinux ttylinux2 ttylinux3
   assert_success
+
+  config=$(base64 <<<'
+<obj xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="vim25:VirtualMachineConfigSpec" xmlns:vim25="urn:vim25">
+ <numCPUs>4</numCPUs>
+ <memoryMB>2048</memoryMB>
+</obj>')
+
+  run env GOVC_SHOW_UNRELEASED=true govc library.deploy -config "$config" "my-content/$TTYLINUX_NAME" ttylinux
+  assert_success
+
+  run govc vm.info -r ttylinux
+  assert_success
+  assert_matches 2048MB
+  assert_matches "4 vCPU"
 
   item_id=$(govc library.info -json "/my-content/$TTYLINUX_NAME" | jq -r .[].id)
 
@@ -316,6 +335,22 @@ EOF
 
   run govc library.deploy my-content/$item my-vm2
   assert_failure # $item no longer exists
+}
+
+@test "library.vmtx.info" {
+  vcsim_env
+
+  vm=DC0_H0_VM0
+  item="${vm}_item"
+
+  run govc library.create my-content
+  assert_success
+
+  run govc library.clone -vm $vm my-content $item
+  assert_success
+
+  run govc library.vmtx.info my-content/$item
+  assert_success
 }
 
 @test "library.pubsub" {
@@ -419,6 +454,35 @@ EOF
   done
 }
 
+@test "library.create.withpolicy" {
+  vcsim_env
+
+  policy_id=$(govc library.policy.ls -json | jq '.[][0].policy' -r)
+  echo "$policy_id"
+
+  run govc library.create -policy=foo secure-content
+  assert_failure
+
+  run govc library.create -policy "$policy_id" secure-content
+  assert_success
+
+  library_secpol=$(govc library.info -json secure-content | jq '.[].security_policy_id' -r)
+  assert_equal "$library_secpol" "$policy_id"
+
+  run govc library.import secure-content "$GOVC_IMAGES/ttylinux-latest.ova"
+  assert_success
+
+  run govc library.info -json secure-content/ttylinux-latest
+  assert_success
+
+  assert_equal false "$(jq -r <<<"$output" .[].security_compliance)"
+
+  assert_equal NOT_AVAILABLE "$(jq -r <<<"$output" .[].certificate_verification_info.status)"
+
+  run govc library.rm secure-content
+  assert_success
+}
+
 @test "library.findbyid" {
   vcsim_env
 
@@ -449,4 +513,41 @@ EOF
 
   n=$(govc library.info my-content | grep -c Name:)
   [ "$n" == 1 ]
+}
+
+@test "library.trust" {
+  vcsim_env
+
+  run govc library.trust.ls
+  assert_success
+
+  run govc library.trust.info enoent
+  assert_failure # id does not exist
+
+  run govc library.trust.rm enoent
+  assert_failure # id does not exist
+
+  pem=$(new_id)
+  run govc extension.setcert -cert-pem ++ -org govc-library-trust "$pem" # generate a cert for testing
+  assert_success
+
+  run govc library.trust.create "$pem.crt"
+  assert_success
+
+  id=$(govc library.trust.ls | grep O=govc-library-trust | awk '{print $1}')
+  run govc library.trust.info "$id"
+  assert_success
+
+  run govc library.trust.rm "$id"
+  assert_success
+
+  run govc library.trust.info "$id"
+  assert_failure # id does not exist
+
+  date > "$pem.crt"
+  run govc library.trust.create "$id.crt"
+  assert_failure # invalid cert
+
+  # remove generated cert and key
+  rm "$pem".{crt,key}
 }

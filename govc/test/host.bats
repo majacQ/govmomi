@@ -74,7 +74,7 @@ load test_helper
   run govc host.info -host.dns $(basename "$name")
   assert_failure # TODO: SearchIndex:SearchIndex does not implement: FindByDnsName
 
-  uuid=$(govc host.info -host "$name" -json | jq -r .HostSystems[].Summary.Hardware.Uuid)
+  uuid=$(govc host.info -host "$name" -json | jq -r .HostSystems[].Summary.hardware.uuid)
   run govc host.info -host.uuid "$uuid"
   assert_success
 
@@ -245,4 +245,29 @@ load test_helper
 
   run govc host.date.info -json
   assert_success
+}
+
+@test "host.disconnect and host.reconnect" {
+  vcsim_env
+
+  run govc host.info
+  assert_success
+  status=$(govc host.info| grep -i "State"| awk '{print $2}')
+  assert_equal 'connected' $status
+
+  run govc host.disconnect "$GOVC_HOST"
+  assert_success
+
+  run govc host.info
+  assert_success
+  status=$(govc host.info| grep -i "State"| awk '{print $2}')
+  assert_equal 'disconnected' $status
+
+  run govc host.reconnect "$GOVC_HOST"
+  assert_success
+
+  run govc host.info
+  assert_success
+  status=$(govc host.info| grep -i "State"| awk '{print $2}')
+  assert_equal 'connected' $status
 }

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020 VMware, Inc. All Rights Reserved.
+Copyright (c) 2020-2022 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ type enableCluster struct {
 	ControlPlaneDNSSearchDomains           string
 	ImageStoragePolicy                     string
 	NcpClusterNetworkSpec                  workloadNetwork
-	ControlPlaneManagementNetwork          namespace.MasterManagementNetwork
+	ControlPlaneManagementNetwork          masterManagementNetwork
 	ControlPlaneDNSNames                   string
 	ControlPlaneNTPServers                 string
 	EphemeralStoragePolicy                 string
@@ -49,6 +49,13 @@ type enableCluster struct {
 	DefaultKubernetesServiceContentLibrary string
 
 	*flags.ClusterFlag
+}
+
+type masterManagementNetwork struct {
+	Mode         string
+	FloatingIP   string
+	AddressRange *namespace.AddressRange
+	Network      string
 }
 
 type workloadNetwork struct {
@@ -71,7 +78,7 @@ type objectReferences struct {
 
 func init() {
 	newEnableCluster := &enableCluster{
-		ControlPlaneManagementNetwork: namespace.MasterManagementNetwork{
+		ControlPlaneManagementNetwork: masterManagementNetwork{
 			AddressRange: &namespace.AddressRange{},
 		},
 	}
@@ -128,11 +135,11 @@ func (cmd *enableCluster) Register(ctx context.Context, f *flag.FlagSet) {
 	f.StringVar(&cmd.WorkerDNS, "worker-dns", "",
 		"Comma-separated list of DNS server IP addresses to use on the worker nodes, specified in order of preference.")
 	f.StringVar(&cmd.ControlPlaneStoragePolicy, "control-plane-storage-policy", "",
-		"Storage policy associated with Kubernetes API server.")
+		"Storage Policy associated with Kubernetes API server.")
 	f.StringVar(&cmd.EphemeralStoragePolicy, "ephemeral-storage-policy", "",
-		"Storage policy associated with ephemeral disks of all the Kubernetes Pods in the cluster.")
+		"Storage Policy associated with ephemeral disks of all the Kubernetes Pods in the cluster.")
 	f.StringVar(&cmd.ImageStoragePolicy, "image-storage-policy", "",
-		"Storage policy to be used for container images.")
+		"Storage Policy to be used for container images.")
 	f.StringVar(&cmd.LoginBanner, "login-banner", "",
 		"Optional. Disclaimer to be displayed prior to login via the Kubectl plugin.")
 	// documented API is currently ambiguous with these duplicated fields, need to wait for this to be resolved
@@ -154,6 +161,7 @@ Examples:
     -cluster "Workload-Cluster" \
     -service-cidr 10.96.0.0/23 \
     -pod-cidrs 10.244.0.0/20 \
+    -control-plane-dns 10.10.10.10 \
     -control-plane-dns-names wcp.example.com \
     -workload-network.egress-cidrs 10.0.0.128/26 \
     -workload-network.ingress-cidrs "10.0.0.64/26" \
@@ -243,7 +251,7 @@ func (cmd *enableCluster) Run(ctx context.Context, f *flag.FlagSet) error {
 	edgeClusterDisplayName := cmd.NcpClusterNetworkSpec.NsxEdgeCluster
 	edgeClusters, err := m.ListCompatibleEdgeClusters(ctx, clusterId, switchId)
 	if err != nil {
-		return fmt.Errorf("error in compatible switch lookup: %s", err)
+		return fmt.Errorf("error in compatible edge cluster lookup: %s", err)
 	}
 
 	matchingEdgeClusters := make([]string, 0)
@@ -302,7 +310,12 @@ func (cmd *enableCluster) toVapiSpec(refs objectReferences) (*namespace.EnableCl
 	if (cmd.ControlPlaneManagementNetwork.Mode != "") ||
 		(cmd.ControlPlaneManagementNetwork.FloatingIP != "") ||
 		(cmd.ControlPlaneManagementNetwork.Network != "") {
-		masterManagementNetwork = &cmd.ControlPlaneManagementNetwork
+		masterManagementNetwork = &namespace.MasterManagementNetwork{}
+		masterManagementNetwork.AddressRange = cmd.ControlPlaneManagementNetwork.AddressRange
+		masterManagementNetwork.FloatingIP = cmd.ControlPlaneManagementNetwork.FloatingIP
+		ipam := namespace.IpAssignmentModeFromString(cmd.ControlPlaneManagementNetwork.Mode)
+		masterManagementNetwork.Mode = &ipam
+		masterManagementNetwork.Network = cmd.ControlPlaneManagementNetwork.Network
 	}
 	if masterManagementNetwork != nil {
 		if (masterManagementNetwork.AddressRange.SubnetMask == "") &&
@@ -314,9 +327,12 @@ func (cmd *enableCluster) toVapiSpec(refs objectReferences) (*namespace.EnableCl
 		masterManagementNetwork.Network = refs.Network
 	}
 
+	sh := namespace.SizingHintFromString(cmd.SizeHint)
+	np := namespace.ClusterNetworkProviderFromString(cmd.NetworkProvider)
+
 	spec := namespace.EnableClusterSpec{
 		MasterDNSSearchDomains: splitCommaSeparatedList(cmd.ControlPlaneDNSSearchDomains),
-		ImageStorage:           namespace.ImageStorage{StoragePolicy: refs.ImageStoragePolicy},
+		ImageStorage:           namespace.ImageStorageSpec{StoragePolicy: refs.ImageStoragePolicy},
 		NcpClusterNetworkSpec: &namespace.NcpClusterNetworkSpec{
 			NsxEdgeCluster:           refs.EdgeCluster,
 			PodCidrs:                 podCidrs,
@@ -331,11 +347,11 @@ func (cmd *enableCluster) toVapiSpec(refs objectReferences) (*namespace.EnableCl
 		DefaultImageRepository:                 cmd.DefaultImageRepository,
 		ServiceCidr:                            serviceCidr,
 		LoginBanner:                            cmd.LoginBanner,
-		SizeHint:                               cmd.SizeHint,
+		SizeHint:                               &sh,
 		WorkerDNS:                              splitCommaSeparatedList(cmd.WorkerDNS),
 		DefaultImageRegistry:                   nil,
 		MasterDNS:                              splitCommaSeparatedList(cmd.ControlPlaneDNS),
-		NetworkProvider:                        cmd.NetworkProvider,
+		NetworkProvider:                        &np,
 		MasterStoragePolicy:                    refs.ControlPlaneStoragePolicy,
 		DefaultKubernetesServiceContentLibrary: cmd.DefaultKubernetesServiceContentLibrary,
 	}

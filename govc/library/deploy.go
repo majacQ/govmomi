@@ -38,6 +38,7 @@ type deploy struct {
 	*importx.OptionsFlag
 
 	profile string
+	config  string
 }
 
 func init() {
@@ -61,6 +62,10 @@ func (cmd *deploy) Register(ctx context.Context, f *flag.FlagSet) {
 	cmd.OptionsFlag.Register(ctx, f)
 
 	f.StringVar(&cmd.profile, "profile", "", "Storage profile")
+
+	if cli.ShowUnreleased() {
+		f.StringVar(&cmd.config, "config", "", "VM config spec")
+	}
 }
 
 func (cmd *deploy) Process(ctx context.Context) error {
@@ -88,10 +93,16 @@ func (cmd *deploy) Description() string {
 
 Examples:
   govc library.deploy /library_name/ovf_template vm_name
-  govc library.deploy /library_name/ovf_template -options deploy.json`
+  govc library.export /library_name/ovf_template/*.ovf # save local copy of .ovf
+  govc import.spec *.ovf > deploy.json # generate options from .ovf
+  # edit deploy.json as needed
+  govc library.deploy -options deploy.json /library_name/ovf_template`
 }
 
 func (cmd *deploy) Run(ctx context.Context, f *flag.FlagSet) error {
+	if f.NArg() > 2 {
+		return flag.ErrHelp
+	}
 	path := f.Arg(0)
 	name := f.Arg(1)
 
@@ -214,6 +225,14 @@ func (cmd *deploy) Run(ctx context.Context, f *flag.FlagSet) error {
 				FolderID:       folder.Reference().Value,
 			},
 		}
+
+		if cmd.config != "" {
+			deploy.VmConfigSpec = &vcenter.VmConfigSpec{
+				Provider: "XML",
+				XML:      cmd.config,
+			}
+		}
+
 		ref, err = m.DeployLibraryItem(ctx, item.ID, deploy)
 		if err != nil {
 			return err

@@ -20,7 +20,8 @@ load test_helper
   server=$(govc env -x GOVC_URL_HOST)
   port=$(govc env -x GOVC_URL_PORT)
 
-  docker run --rm projects.registry.vmware.com/pez/powerclicore@sha256:09b29f69c0653f871f6d569f7c4c03c952909f68a27e9792ef2f7c8653235668 /usr/bin/pwsh -f - <<EOF
+  # docker run --rm projects.registry.vmware.com/pez/powerclicore@sha256:09b29f69c0653f871f6d569f7c4c03c952909f68a27e9792ef2f7c8653235668 /usr/bin/pwsh -f - <<EOF
+  docker run --rm ghcr.io/embano1/powerclicore@sha256:09b29f69c0653f871f6d569f7c4c03c952909f68a27e9792ef2f7c8653235668 /usr/bin/pwsh -f - <<EOF
 Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -confirm:\$false | Out-Null
 Connect-VIServer -Server $server -Port $port -User user -Password pass
 
@@ -35,8 +36,8 @@ EOF
 
   # compile + run examples against vcsim
   for main in ../../examples/*/main.go ; do
-    # TODO: #2567
-    if [[ $main =~ "task" ]]; then
+    # TODO: #2567 #2476
+    if [[ $main =~ task|alarm ]]; then
       continue
     fi
     run go run "$main" -insecure -url "$GOVC_URL"
@@ -127,7 +128,7 @@ EOF
   run govc object.collect -s $vm summary.guest.ipAddress
   assert_success "10.0.0.1"
 
-  netip=$(govc object.collect -json -s $vm guest.net | jq -r .[].Val.GuestNicInfo[].IpAddress[0])
+  netip=$(govc object.collect -json -s $vm guest.net | jq -r .[].val.GuestNicInfo[].ipAddress[0])
   [ "$netip" = "10.0.0.1" ]
 
   run govc vm.info -vm.ip 10.0.0.1
@@ -263,7 +264,7 @@ EOF
   run govc object.collect -s vm/$vm summary.guest.ipAddress
   assert_success "$ip"
 
-  netip=$(govc object.collect -json -s vm/$vm guest.net | jq -r .[].Val.GuestNicInfo[].IpAddress[0])
+  netip=$(govc object.collect -json -s vm/$vm guest.net | jq -r .[].val.GuestNicInfo[].ipAddress[0])
   [ "$netip" = "$ip" ]
 
   run govc vm.power -s $vm
@@ -427,7 +428,7 @@ EOF
 
   vcsim_stop
 
-  dir=$($mktemp --tmpdir -d govc-test-XXXXX)
+  dir=$($mktemp --tmpdir -d govc-test-XXXXX 2>/dev/null || $mktemp -d -t govc-test-XXXXX)
   echo nobody > "$dir/username"
   echo nothing > "$dir/password"
 
@@ -476,6 +477,16 @@ EOF
 
   objs=$(govc find / | wc -l)
   assert_equal 23 "$objs"
+
+  run govc cluster.add -cluster DC0_C0 -hostname DC0_C0_H0-clone -username DC0_C0_H0 -password pass -noverify
+  assert_success
+  objs=$(govc find / | wc -l)
+  assert_equal 24 "$objs"
+
+  run govc host.add -hostname DC0_H0-clone -username DC0_H0 -password pass -noverify
+  assert_success
+  objs=$(govc find / | wc -l)
+  assert_equal 27 "$objs" # ComputeResource + ResourcePool + HostSystem
 
   run govc host.portgroup.add -host DC0_H0 -vswitch vSwitch0 bridge
   assert_success # issue #2016

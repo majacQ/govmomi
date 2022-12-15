@@ -44,6 +44,11 @@ but appear via `govc $cmd -h`:
  - [cluster.group.create](#clustergroupcreate)
  - [cluster.group.ls](#clustergroupls)
  - [cluster.group.remove](#clustergroupremove)
+ - [cluster.module.create](#clustermodulecreate)
+ - [cluster.module.ls](#clustermodulels)
+ - [cluster.module.rm](#clustermodulerm)
+ - [cluster.module.vm.add](#clustermodulevmadd)
+ - [cluster.module.vm.rm](#clustermodulevmrm)
  - [cluster.override.change](#clusteroverridechange)
  - [cluster.override.info](#clusteroverrideinfo)
  - [cluster.override.remove](#clusteroverrideremove)
@@ -81,6 +86,7 @@ but appear via `govc $cmd -h`:
  - [device.cdrom.add](#devicecdromadd)
  - [device.cdrom.eject](#devicecdromeject)
  - [device.cdrom.insert](#devicecdrominsert)
+ - [device.clock.add](#deviceclockadd)
  - [device.connect](#deviceconnect)
  - [device.disconnect](#devicedisconnect)
  - [device.floppy.add](#devicefloppyadd)
@@ -179,6 +185,7 @@ but appear via `govc $cmd -h`:
  - [host.storage.mark](#hoststoragemark)
  - [host.storage.partition](#hoststoragepartition)
  - [host.vnic.change](#hostvnicchange)
+ - [host.vnic.hint](#hostvnichint)
  - [host.vnic.info](#hostvnicinfo)
  - [host.vnic.service](#hostvnicservice)
  - [host.vswitch.add](#hostvswitchadd)
@@ -198,6 +205,7 @@ but appear via `govc $cmd -h`:
  - [library.import](#libraryimport)
  - [library.info](#libraryinfo)
  - [library.ls](#libraryls)
+ - [library.policy.ls](#librarypolicyls)
  - [library.publish](#librarypublish)
  - [library.rm](#libraryrm)
  - [library.session.ls](#librarysessionls)
@@ -207,7 +215,12 @@ but appear via `govc $cmd -h`:
  - [library.subscriber.ls](#librarysubscriberls)
  - [library.subscriber.rm](#librarysubscriberrm)
  - [library.sync](#librarysync)
+ - [library.trust.create](#librarytrustcreate)
+ - [library.trust.info](#librarytrustinfo)
+ - [library.trust.ls](#librarytrustls)
+ - [library.trust.rm](#librarytrustrm)
  - [library.update](#libraryupdate)
+ - [library.vmtx.info](#libraryvmtxinfo)
  - [license.add](#licenseadd)
  - [license.assign](#licenseassign)
  - [license.assigned.ls](#licenseassignedls)
@@ -230,6 +243,12 @@ but appear via `govc $cmd -h`:
  - [namespace.cluster.enable](#namespaceclusterenable)
  - [namespace.cluster.ls](#namespaceclusterls)
  - [namespace.logs.download](#namespacelogsdownload)
+ - [namespace.service.activate](#namespaceserviceactivate)
+ - [namespace.service.create](#namespaceservicecreate)
+ - [namespace.service.deactivate](#namespaceservicedeactivate)
+ - [namespace.service.info](#namespaceserviceinfo)
+ - [namespace.service.ls](#namespaceservicels)
+ - [namespace.service.rm](#namespaceservicerm)
  - [object.collect](#objectcollect)
  - [object.destroy](#objectdestroy)
  - [object.method](#objectmethod)
@@ -263,6 +282,9 @@ but appear via `govc $cmd -h`:
  - [sso.group.ls](#ssogroupls)
  - [sso.group.rm](#ssogrouprm)
  - [sso.group.update](#ssogroupupdate)
+ - [sso.idp.ls](#ssoidpls)
+ - [sso.lpp.info](#ssolppinfo)
+ - [sso.lpp.update](#ssolppupdate)
  - [sso.service.ls](#ssoservicels)
  - [sso.user.create](#ssousercreate)
  - [sso.user.id](#ssouserid)
@@ -291,8 +313,20 @@ but appear via `govc $cmd -h`:
  - [tree](#tree)
  - [vapp.destroy](#vappdestroy)
  - [vapp.power](#vapppower)
+ - [vcsa.access.consolecli.get](#vcsaaccessconsolecliget)
+ - [vcsa.access.consolecli.set](#vcsaaccessconsolecliset)
+ - [vcsa.access.dcui.get](#vcsaaccessdcuiget)
+ - [vcsa.access.dcui.set](#vcsaaccessdcuiset)
+ - [vcsa.access.shell.get](#vcsaaccessshellget)
+ - [vcsa.access.shell.set](#vcsaaccessshellset)
+ - [vcsa.access.ssh.get](#vcsaaccesssshget)
+ - [vcsa.access.ssh.set](#vcsaaccesssshset)
  - [vcsa.log.forwarding.info](#vcsalogforwardinginfo)
  - [vcsa.net.proxy.info](#vcsanetproxyinfo)
+ - [vcsa.shutdown.cancel](#vcsashutdowncancel)
+ - [vcsa.shutdown.get](#vcsashutdownget)
+ - [vcsa.shutdown.poweroff](#vcsashutdownpoweroff)
+ - [vcsa.shutdown.reboot](#vcsashutdownreboot)
  - [version](#version)
  - [vm.change](#vmchange)
  - [vm.clone](#vmclone)
@@ -501,6 +535,81 @@ Examples:
 Options:
   -cluster=              Cluster [GOVC_CLUSTER]
   -name=                 Cluster group name
+```
+
+## cluster.module.create
+
+```
+Usage: govc cluster.module.create [OPTIONS]
+
+Create cluster module.
+
+This command will output the ID of the new module.
+
+Examples:
+  govc cluster.module.create -cluster my_cluster
+
+Options:
+  -cluster=              Cluster [GOVC_CLUSTER]
+```
+
+## cluster.module.ls
+
+```
+Usage: govc cluster.module.ls [OPTIONS]
+
+List cluster modules.
+
+When -id is specified, that module's members are listed.
+
+Examples:
+  govc cluster.module.ls
+  govc cluster.module.ls -json | jq .
+  govc cluster.module.ls -id module_id
+
+Options:
+  -id=                   Module ID
+```
+
+## cluster.module.rm
+
+```
+Usage: govc cluster.module.rm [OPTIONS] ID
+
+Delete cluster module ID.
+
+Examples:
+  govc cluster.module.rm module_id
+
+Options:
+```
+
+## cluster.module.vm.add
+
+```
+Usage: govc cluster.module.vm.add [OPTIONS] VM...
+
+Add VM(s) to a cluster module.
+
+Examples:
+  govc cluster.module.vm.add -id module_id $vm...
+
+Options:
+  -id=                   Module ID
+```
+
+## cluster.module.vm.rm
+
+```
+Usage: govc cluster.module.vm.rm [OPTIONS] VM...
+
+Remove VM(s) from a cluster module.
+
+Examples:
+  govc cluster.module.vm.rm -id module_id $vm...
+
+Options:
+  -id=                   Module ID
 ```
 
 ## cluster.override.change
@@ -1175,6 +1284,21 @@ Options:
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
+## device.clock.add
+
+```
+Usage: govc device.clock.add [OPTIONS]
+
+Add precision clock device to VM.
+
+Examples:
+  govc device.clock.add -vm $vm
+  govc device.info clock-*
+
+Options:
+  -vm=                   Virtual machine [GOVC_VM]
+```
+
 ## device.connect
 
 ```
@@ -1706,6 +1830,7 @@ Options:
   -discovery-protocol=   Link Discovery Protocol
   -folder=               Inventory folder [GOVC_FOLDER]
   -mtu=0                 DVS Max MTU
+  -num-uplinks=0         Number of Uplinks
   -product-version=      DVS product version
 ```
 
@@ -1836,6 +1961,7 @@ Options:
   -name=                 Specifies target name (defaults to source name)
   -prefix=true           Prepend target name to image filenames if missing
   -sha=0                 Generate manifest using SHA 1, 256, 512 or 0 to skip
+  -snapshot=             Specifies a snapshot to export from (supports running VMs)
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2075,7 +2201,7 @@ Examples:
   govc guest.chmod -vm $name 0644 /var/log/foo.log
 
 Options:
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2090,7 +2216,7 @@ Examples:
   govc guest.chown -vm $name UID[:GID] /var/log/foo.log
 
 Options:
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2125,7 +2251,7 @@ Examples:
 
 Options:
   -f=false               If set, the local destination file is clobbered
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2142,7 +2268,7 @@ Examples:
 
 Options:
   -i=false               Interactive session
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2158,7 +2284,7 @@ Examples:
 
 Options:
   -i=false               Interactive session
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -p=[]                  Process ID
   -vm=                   Virtual machine [GOVC_VM]
 ```
@@ -2174,7 +2300,7 @@ Examples:
   govc guest.ls -vm $name /tmp
 
 Options:
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -s=false               Simple path only listing
   -vm=                   Virtual machine [GOVC_VM]
 ```
@@ -2191,7 +2317,7 @@ Examples:
   govc guest.mkdir -vm $name -p /tmp/logs/foo/bar
 
 Options:
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -p=false               Create intermediate directories as needed
   -vm=                   Virtual machine [GOVC_VM]
 ```
@@ -2211,7 +2337,7 @@ Examples:
 
 Options:
   -d=false               Make a directory instead of a file
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -p=                    If specified, create relative to this directory
   -s=                    Suffix
   -t=                    Prefix
@@ -2230,7 +2356,7 @@ Examples:
   govc guest.mv -vm $name -n /tmp/baz.sh /tmp/bar.sh
 
 Options:
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -n=false               Do not overwrite an existing file
   -vm=                   Virtual machine [GOVC_VM]
 ```
@@ -2259,7 +2385,7 @@ Options:
   -X=false               Wait for process to exit
   -e=false               Select all processes
   -i=false               Interactive session
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -p=[]                  Select by process ID
   -vm=                   Virtual machine [GOVC_VM]
   -x=false               Output exit time and code
@@ -2276,7 +2402,7 @@ Examples:
   govc guest.rm -vm $name /tmp/foo.log
 
 Options:
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2292,7 +2418,7 @@ Examples:
   govc guest.rmdir -vm $name -r /tmp/non-empty-dir
 
 Options:
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -r=false               Recursive removal
   -vm=                   Virtual machine [GOVC_VM]
 ```
@@ -2328,7 +2454,7 @@ Options:
   -d=                    Input data string. A value of '-' reads from OS stdin
   -e=[]                  Set environment variables
   -i=false               Interactive session
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2351,7 +2477,7 @@ Options:
   -C=                    The absolute path of the working directory for the program to start
   -e=[]                  Set environment variable (key=val)
   -i=false               Interactive session
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2370,7 +2496,7 @@ Options:
   -a=false               Change only the access time
   -c=false               Do not create any files
   -d=                    Use DATE instead of current time
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -vm=                   Virtual machine [GOVC_VM]
 ```
 
@@ -2391,7 +2517,7 @@ Examples:
 Options:
   -f=false               If set, the guest destination file is clobbered
   -gid=<nil>             Group ID
-  -l=:                   Guest VM credentials [GOVC_GUEST_LOGIN]
+  -l=:                   Guest VM credentials (<user>:<password>) [GOVC_GUEST_LOGIN]
   -perm=0                File permissions
   -uid=<nil>             User ID
   -vm=                   Virtual machine [GOVC_VM]
@@ -2887,6 +3013,20 @@ Options:
   -mtu=0                 vmk MTU
 ```
 
+## host.vnic.hint
+
+```
+Usage: govc host.vnic.hint [OPTIONS] [DEVICE]...
+
+Query virtual nic DEVICE hints.
+Examples:
+  govc host.vnic.hint -host hostname
+  govc host.vnic.hint -host hostname vmnic1
+
+Options:
+  -host=                 Host system [GOVC_HOST]
+```
+
 ## host.vnic.info
 
 ```
@@ -3086,6 +3226,7 @@ Examples:
 Options:
   -d=                    Description of library
   -ds=                   Datastore [GOVC_DATASTORE]
+  -policy=               Security Policy ID
   -pub=<nil>             Publish library
   -pub-password=         Publication password
   -pub-username=         Publication username
@@ -3106,7 +3247,10 @@ Deploy library OVF template.
 
 Examples:
   govc library.deploy /library_name/ovf_template vm_name
-  govc library.deploy /library_name/ovf_template -options deploy.json
+  govc library.export /library_name/ovf_template/*.ovf # save local copy of .ovf
+  govc import.spec *.ovf > deploy.json # generate options from .ovf
+  # edit deploy.json as needed
+  govc library.deploy -options deploy.json /library_name/ovf_template
 
 Options:
   -ds=                   Datastore [GOVC_DATASTORE]
@@ -3180,7 +3324,7 @@ Examples:
   govc library.info */
   govc device.cdrom.insert -vm $vm -device cdrom-3000 $(govc library.info -L /lib1/item1/file1)
   govc library.info -json | jq .
-  govc library.info /lib1/item1 -json | jq .
+  govc library.info -json /lib1/item1 | jq .
 
 Options:
   -L=false               List Datastore path only
@@ -3203,6 +3347,20 @@ Examples:
   govc library.ls */
   govc library.ls -json | jq .
   govc library.ls /lib1/item1 -json | jq .
+
+Options:
+```
+
+## library.policy.ls
+
+```
+Usage: govc library.policy.ls [OPTIONS]
+
+List security policies for content libraries.
+
+Examples:
+  govc library.policy.ls
+
 
 Options:
 ```
@@ -3350,6 +3508,62 @@ Options:
   -vmtx=                 Sync subscribed library to local library as VM Templates
 ```
 
+## library.trust.create
+
+```
+Usage: govc library.trust.create [OPTIONS] FILE
+
+Add a certificate to content library trust store.
+
+If FILE name is "-", read certificate from stdin.
+
+Examples:
+  govc library.trust.create cert.pem
+  govc about.cert -show -u wp-content-int.vmware.com | govc library.trust.create -
+
+Options:
+```
+
+## library.trust.info
+
+```
+Usage: govc library.trust.info [OPTIONS] ID
+
+Display trusted certificate info.
+
+Examples:
+  govc library.trust.info vmware_signed
+
+Options:
+```
+
+## library.trust.ls
+
+```
+Usage: govc library.trust.ls [OPTIONS]
+
+List trusted certificates for content libraries.
+
+Examples:
+  govc library.trust.ls
+  govc library.trust.ls -json
+
+Options:
+```
+
+## library.trust.rm
+
+```
+Usage: govc library.trust.rm [OPTIONS] ID
+
+Remove certificate ID from trusted certificates.
+
+Examples:
+  govc library.trust.rm $id
+
+Options:
+```
+
 ## library.update
 
 ```
@@ -3364,6 +3578,19 @@ Examples:
 Options:
   -d=                    Library or item description
   -n=                    Library or item name
+```
+
+## library.vmtx.info
+
+```
+Usage: govc library.vmtx.info [OPTIONS]
+
+Display VMTX template details
+
+Examples:
+  govc library.vmtx.info /library_name/vmtx_template_name
+
+Options:
 ```
 
 ## license.add
@@ -3693,6 +3920,7 @@ Examples:
     -cluster "Workload-Cluster" \
     -service-cidr 10.96.0.0/23 \
     -pod-cidrs 10.244.0.0/20 \
+    -control-plane-dns 10.10.10.10 \
     -control-plane-dns-names wcp.example.com \
     -workload-network.egress-cidrs 10.0.0.128/26 \
     -workload-network.ingress-cidrs "10.0.0.64/26" \
@@ -3713,9 +3941,9 @@ Options:
   -control-plane-dns-names=                Comma-separated list of DNS names to associate with the Kubernetes API server. These DNS names are embedded in the TLS certificate presented by the API server.
   -control-plane-dns-search-domains=       Comma-separated list of domains to be searched when trying to lookup a host name on Kubernetes API server, specified in order of preference.
   -control-plane-ntp-servers=              Optional. Comma-separated list of NTP server DNS names or IP addresses to use on Kubernetes API server, specified in order of preference. If unset, VMware Tools based time synchronization is enabled.
-  -control-plane-storage-policy=           Storage policy associated with Kubernetes API server.
-  -ephemeral-storage-policy=               Storage policy associated with ephemeral disks of all the Kubernetes Pods in the cluster.
-  -image-storage-policy=                   Storage policy to be used for container images.
+  -control-plane-storage-policy=           Storage Policy associated with Kubernetes API server.
+  -ephemeral-storage-policy=               Storage Policy associated with ephemeral disks of all the Kubernetes Pods in the cluster.
+  -image-storage-policy=                   Storage Policy to be used for container images.
   -login-banner=                           Optional. Disclaimer to be displayed prior to login via the Kubectl plugin.
   -mgmt-network.address-count=5            The number of IP addresses in the management range. Optional, but required with network mode STATICRANGE.
   -mgmt-network.floating-IP=               Optional. The Floating IP used by the HA master cluster in the when network Mode is DHCP.
@@ -3769,6 +3997,88 @@ Examples:
 
 Options:
   -cluster=              Cluster [GOVC_CLUSTER]
+```
+
+## namespace.service.activate
+
+```
+Usage: govc namespace.service.activate [OPTIONS] NAME...
+
+Activates a vSphere Namespace Supervisor Service.
+
+Examples:
+  govc namespace.service.activate my-supervisor-service other-supervisor-service
+
+Options:
+```
+
+## namespace.service.create
+
+```
+Usage: govc namespace.service.create [OPTIONS] MANIFEST
+
+Creates a vSphere Namespace Supervisor Service.
+
+Examples:
+  govc namespace.service.create manifest.yaml
+
+Options:
+```
+
+## namespace.service.deactivate
+
+```
+Usage: govc namespace.service.deactivate [OPTIONS] NAME...
+
+Deactivates a vSphere Namespace Supervisor Service.
+
+Examples:
+  govc namespace.service.deactivate my-supervisor-service other-supervisor-service
+
+Options:
+```
+
+## namespace.service.info
+
+```
+Usage: govc namespace.service.info [OPTIONS] NAME
+
+Gets information of a specific supervisor service.
+
+Examples:
+  govc namespace.service.info my-supervisor-service
+  govc namespace.service.info -json my-supervisor-service | jq .
+
+Options:
+```
+
+## namespace.service.ls
+
+```
+Usage: govc namespace.service.ls [OPTIONS]
+
+List namepace registered supervisor services.
+
+Examples:
+  govc namespace.service.ls
+  govc namespace.service.ls -l
+  govc namespace.service.ls -json | jq .
+
+Options:
+  -l=false               Long listing format
+```
+
+## namespace.service.rm
+
+```
+Usage: govc namespace.service.rm [OPTIONS] NAME...
+
+Removes a vSphere Namespace Supervisor Service.
+
+Examples:
+  govc namespace.service.rm my-supervisor-service other-supervisor-service
+
+Options:
 ```
 
 ## object.collect
@@ -4414,14 +4724,17 @@ Options:
 ## sso.group.ls
 
 ```
-Usage: govc sso.group.ls [OPTIONS]
+Usage: govc sso.group.ls [OPTIONS] [NAME]
 
 List SSO groups.
 
 Examples:
-  govc sso.group.ls -s
+  govc sso.group.ls
+  govc sso.group.ls group-name # list groups in group-name
+  govc sso.group.ls -search Admin # search for groups
 
 Options:
+  -search=               Search
 ```
 
 ## sso.group.rm
@@ -4456,6 +4769,58 @@ Options:
   -d=                    Group description
   -g=false               Add/Remove group from group
   -r=                    Remove user/group from group
+```
+
+## sso.idp.ls
+
+```
+Usage: govc sso.idp.ls [OPTIONS]
+
+List SSO identity provider sources.
+
+Examples:
+  govc sso.idp.ls
+  govc sso.idp.ls -json
+
+Options:
+```
+
+## sso.lpp.info
+
+```
+Usage: govc sso.lpp.info [OPTIONS]
+
+Get SSO local password policy.
+
+Examples:
+  govc sso.lpp.info
+  govc sso.lpp.info -json
+
+Options:
+```
+
+## sso.lpp.update
+
+```
+Usage: govc sso.lpp.update [OPTIONS] NAME
+
+Update SSO local password policy.
+
+Examples:
+  govc sso.lpp.update -PasswordLifetimeDays 0
+
+Options:
+  -Description=                        Description
+  -MaxIdenticalAdjacentCharacters=0    Maximum identical adjacent characters
+  -MaxLength=0                         Maximum length
+  -MinAlphabeticCount=<nil>            Minimum alphabetic count
+  -MinLength=<nil>                     Minimim length
+  -MinLowercaseCount=<nil>             Minimum lowercase count
+  -MinNumericCount=<nil>               Minimum numeric count
+  -MinSpecialCharCount=<nil>           Minimum special characters count
+  -MinUppercaseCount=<nil>             Minimum uppercase count
+  -PasswordLifetimeDays=<nil>          Password lifetime days
+  -ProhibitedPreviousPasswordsCount=0  Prohibited previous passwords count
 ```
 
 ## sso.service.ls
@@ -4529,9 +4894,12 @@ List SSO users.
 
 Examples:
   govc sso.user.ls -s
+  govc sso.user.ls -group group-name
 
 Options:
+  -group=false           List users in group
   -s=false               List solution users
+  -search=               Search users in group
 ```
 
 ## sso.user.rm
@@ -4934,6 +5302,147 @@ Options:
   -vapp.ipath=           Find vapp by inventory path
 ```
 
+## vcsa.access.consolecli.get
+
+```
+Usage: govc vcsa.access.consolecli.get [OPTIONS]
+
+Get enabled state of the console-based controlled CLI (TTY1).
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.access.consolecli.get
+
+Options:
+```
+
+## vcsa.access.consolecli.set
+
+```
+Usage: govc vcsa.access.consolecli.set [OPTIONS]
+
+Set enabled state of the console-based controlled CLI (TTY1).
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+# Enable Console CLI
+govc vcsa.access.consolecli.set -enabled=true
+
+# Disable Console CLI
+govc vcsa.access.consolecli.set -enabled=false
+
+Options:
+  -enabled=false         Enable Console CLI.
+```
+
+## vcsa.access.dcui.get
+
+```
+Usage: govc vcsa.access.dcui.get [OPTIONS]
+
+Get enabled state of Direct Console User Interface (DCUI TTY2).
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.access.dcui.get
+
+Options:
+```
+
+## vcsa.access.dcui.set
+
+```
+Usage: govc vcsa.access.dcui.set [OPTIONS]
+
+Set enabled state of Direct Console User Interface (DCUI TTY2).
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+# Enable DCUI
+govc vcsa.access.dcui.set -enabled=true
+
+# Disable DCUI
+govc vcsa.access.dcui.set -enabled=false
+
+Options:
+  -enabled=false         Enable Direct Console User Interface (DCUI TTY2).
+```
+
+## vcsa.access.shell.get
+
+```
+Usage: govc vcsa.access.shell.get [OPTIONS]
+
+Get enabled state of BASH, that is, access to BASH from within the controlled CLI.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.access.shell.get
+
+Options:
+```
+
+## vcsa.access.shell.set
+
+```
+Usage: govc vcsa.access.shell.set [OPTIONS]
+
+Set enabled state of BASH, that is, access to BASH from within the controlled CLI.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+# Enable Shell
+govc vcsa.access.shell.set -enabled=true -timeout=240
+
+# Disable Shell
+govc vcsa.access.shell.set -enabled=false
+
+Options:
+  -enabled=false         Enable BASH, that is, access to BASH from within the controlled CLI.
+  -timeout=0             The timeout (in seconds) specifies how long you enable the Shell access. The maximum timeout is 86400 seconds(1 day).
+```
+
+## vcsa.access.ssh.get
+
+```
+Usage: govc vcsa.access.ssh.get [OPTIONS]
+
+Get enabled state of the SSH-based controlled CLI.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.access.ssh.get
+
+Options:
+```
+
+## vcsa.access.ssh.set
+
+```
+Usage: govc vcsa.access.ssh.set [OPTIONS]
+
+Set enabled state of the SSH-based controlled CLI.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+# Enable SSH
+govc vcsa.access.ssh.set -enabled=true
+
+# Disable SSH
+govc vcsa.access.ssh.set -enabled=false
+
+Options:
+  -enabled=false         Enable SSH-based controlled CLI.
+```
+
 ## vcsa.log.forwarding.info
 
 ```
@@ -4958,6 +5467,68 @@ Examples:
   govc vcsa.net.proxy.info
 
 Options:
+```
+
+## vcsa.shutdown.cancel
+
+```
+Usage: govc vcsa.shutdown.cancel [OPTIONS]
+
+Cancel pending shutdown action.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.shutdown.cancel
+
+Options:
+```
+
+## vcsa.shutdown.get
+
+```
+Usage: govc vcsa.shutdown.get [OPTIONS]
+
+Get details about the pending shutdown action.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.shutdown.get
+
+Options:
+```
+
+## vcsa.shutdown.poweroff
+
+```
+Usage: govc vcsa.shutdown.poweroff [OPTIONS] REASON
+
+Power off the appliance.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.shutdown.poweroff -delay 10 "powering off for maintenance"
+
+Options:
+  -delay=0               Minutes after which poweroff should start.
+```
+
+## vcsa.shutdown.reboot
+
+```
+Usage: govc vcsa.shutdown.reboot [OPTIONS] REASON
+
+Reboot the appliance.
+
+Note: This command requires vCenter 7.0.2 or higher.
+
+Examples:
+govc vcsa.shutdown.reboot -delay 10 "rebooting for maintenance"
+
+Options:
+  -delay=0               Minutes after which reboot should start.
 ```
 
 ## version
@@ -4992,6 +5563,7 @@ Examples:
   govc vm.change -vm $vm -latency high
   govc vm.change -vm $vm -latency normal
   govc vm.change -vm $vm -uuid 4139c345-7186-4924-a842-36b69a24159b
+  govc vm.change -vm $vm -scheduled-hw-upgrade-policy always
 
 Options:
   -annotation=                   VM description
@@ -5012,6 +5584,7 @@ Options:
   -memory-pin=<nil>              Reserve all guest memory
   -name=                         Display name
   -nested-hv-enabled=<nil>       Enable nested hardware-assisted virtualization
+  -scheduled-hw-upgrade-policy=  Schedule hardware upgrade policy (onSoftPowerOff|never|always)
   -sync-time-with-host=<nil>     Enable SyncTimeWithHost
   -uuid=                         BIOS UUID
   -vm=                           Virtual machine [GOVC_VM]
@@ -5238,6 +5811,7 @@ Examples:
 
 Options:
   -disk.filePath=        Disk file name
+  -disk.io.limit=<nil>   Disk storage IO per seconds limit (-1 for unlimited)
   -disk.key=0            Disk unique key
   -disk.label=           Disk label
   -disk.name=            Disk name
@@ -5468,6 +6042,7 @@ Options:
   -host=                     Host system [GOVC_HOST]
   -pool=                     Resource pool [GOVC_RESOURCE_POOL]
   -priority=defaultPriority  The task priority
+  -vm=                       Virtual machine [GOVC_VM]
 ```
 
 ## vm.network.add

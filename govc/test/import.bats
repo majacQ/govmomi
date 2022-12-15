@@ -16,10 +16,13 @@ load test_helper
   assert_success
 
   # link ovf/ova to datastore so we can test with an http source
-  dir=$(govc datastore.info -json | jq -r .Datastores[].Info.Url)
+  dir=$(govc datastore.info -json | jq -r .Datastores[].Info.url)
   ln -s "$GOVC_IMAGES/$TTYLINUX_NAME."* "$dir"
 
   run govc import.spec "https://$(govc env GOVC_URL)/folder/$TTYLINUX_NAME.ovf"
+  assert_success
+
+  run govc import.spec "https://$(govc env GOVC_URL)/folder/$TTYLINUX_NAME.ova"
   assert_success
 
   proto=$(jq -r .IPProtocol <<<"$output")
@@ -73,7 +76,7 @@ load test_helper
   assert_success
 
   # ensure vcsim doesn't panic without capacityAllocationUnits
-  dir=$($mktemp --tmpdir -d govc-test-XXXXX)
+  dir=$($mktemp --tmpdir -d govc-test-XXXXX 2>/dev/null || $mktemp -d -t govc-test-XXXXX)
   sed -e s/capacityAllocationUnits/invalid/ "$GOVC_IMAGES/$TTYLINUX_NAME.ovf" > "$dir/$TTYLINUX_NAME.ovf"
   touch "$dir/$TTYLINUX_NAME-disk1.vmdk" # .vmdk contents don't matter to vcsim
   run govc import.ovf "$dir/$TTYLINUX_NAME.ovf"
@@ -95,7 +98,7 @@ load test_helper
   vcsim_env
 
   name=$(new_id)
-  file=$($mktemp --tmpdir govc-test-XXXXX)
+  file=$($mktemp --tmpdir govc-test-XXXXX 2>/dev/null || $mktemp -t govc-test-XXXXX)
   echo "{ \"Name\": \"${name}\"}" > ${file}
 
   run govc import.ovf -options="${file}" $GOVC_IMAGES/${TTYLINUX_NAME}.ovf
@@ -110,7 +113,7 @@ load test_helper
 @test "import.ovf with import.spec result" {
   vcsim_env
 
-  file=$($mktemp --tmpdir govc-test-XXXXX)
+  file=$($mktemp --tmpdir govc-test-XXXXX 2>/dev/null || $mktemp -t govc-test-XXXXX)
   name=$(new_id)
 
   govc import.spec $GOVC_IMAGES/${TTYLINUX_NAME}.ovf > ${file}

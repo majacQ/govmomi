@@ -24,7 +24,7 @@ load test_helper
 @test "session.rm" {
   vcsim_env
 
-  dir=$($mktemp --tmpdir -d govc-test-XXXXX)
+  dir=$($mktemp --tmpdir -d govc-test-XXXXX 2>/dev/null || $mktemp -d -t govc-test-XXXXX)
   export GOVMOMI_HOME="$dir"
   export GOVC_PERSIST_SESSION=true
 
@@ -32,12 +32,12 @@ load test_helper
   assert_failure # NotFound
 
   # Can't remove the current session
-  id=$(govc session.ls -json | jq -r .CurrentSession.Key)
+  id=$(govc session.ls -json | jq -r .CurrentSession.key)
   run govc session.rm "$id"
   assert_failure
 
   thumbprint=$(govc about.cert -thumbprint)
-  id=$(govc session.ls -json -k=false -tls-known-hosts <(echo "$thumbprint") | jq -r .CurrentSession.Key)
+  id=$(govc session.ls -json -k=false -tls-known-hosts <(echo "$thumbprint") | jq -r .CurrentSession.key)
 
   rm -rf "$dir"
 
@@ -48,7 +48,7 @@ load test_helper
 @test "session.persist" {
   vcsim_env
 
-  dir=$($mktemp --tmpdir -d govc-test-XXXXX)
+  dir=$($mktemp --tmpdir -d govc-test-XXXXX 2>/dev/null || $mktemp -d -t govc-test-XXXXX)
   export GOVMOMI_HOME="$dir"
   export GOVC_PERSIST_SESSION=true
 
@@ -102,7 +102,7 @@ load test_helper
     assert_success
 
     user=$(govc env GOVC_USERNAME)
-    dir=$($mktemp --tmpdir -d govc-test-XXXXX)
+    dir=$($mktemp --tmpdir -d govc-test-XXXXX 2>/dev/null || $mktemp -d -t govc-test-XXXXX)
     export GOVMOMI_HOME="$dir"
     export GOVC_PERSIST_SESSION=true
 
@@ -137,7 +137,7 @@ load test_helper
   vcsim_env
 
   user=$(govc env GOVC_USERNAME)
-  dir=$($mktemp --tmpdir -d govc-test-XXXXX)
+  dir=$($mktemp --tmpdir -d govc-test-XXXXX 2>/dev/null || $mktemp -d -t govc-test-XXXXX)
   export GOVMOMI_HOME="$dir"
   export GOVC_PERSIST_SESSION=true
 

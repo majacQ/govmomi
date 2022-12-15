@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020 VMware, Inc. All Rights Reserved.
+Copyright (c) 2020-2022 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,6 +64,10 @@ func (h *Handler) Register(s *simulator.Service, r *simulator.Registry) {
 		s.HandleFunc(internal.NamespaceClusterPath+"/", h.clustersID)
 		s.HandleFunc(internal.NamespaceDistributedSwitchCompatibility+"/", h.listCompatibleDistributedSwitches)
 		s.HandleFunc(internal.NamespaceEdgeClusterCompatibility+"/", h.listCompatibleEdgeClusters)
+
+		s.HandleFunc(internal.SupervisorServicesPath, h.listServices)
+		s.HandleFunc(internal.SupervisorServicesPath+"/", h.getService)
+
 	}
 }
 
@@ -100,8 +104,8 @@ func (h *Handler) clusters(w http.ResponseWriter, r *http.Request) {
 		for i, ref := range refs {
 			clusters[i] = namespace.ClusterSummary{
 				ID:               ref.Value,
-				ConfigStatus:     "RUNNING",
-				KubernetesStatus: "READY",
+				ConfigStatus:     &namespace.RunningConfigStatus,
+				KubernetesStatus: &namespace.ReadyKubernetesStatus,
 			}
 		}
 		vapi.StatusOK(w, clusters)
@@ -133,7 +137,7 @@ func (h *Handler) clustersSupportBundle(w http.ResponseWriter, r *http.Request) 
 	name := fmt.Sprintf("wcp-support-bundle-%s-%s--00-00.tar", id, time.Now().Format("2006Jan02"))
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", name))
-	r.Header.Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Type", "application/octet-stream")
 
 	readme := "vcsim generated support bundle"
 	tw := tar.NewWriter(w)
@@ -195,5 +199,44 @@ func (h *Handler) listCompatibleEdgeClusters(w http.ResponseWriter, r *http.Requ
 			},
 		}
 		vapi.StatusOK(w, switches)
+	}
+}
+
+var supervisorServices []namespace.SupervisorServiceSummary = []namespace.SupervisorServiceSummary{
+	{
+		ID:    "service1",
+		Name:  "mock-service-1",
+		State: "ACTIVATED",
+	},
+	{
+		ID:    "service2",
+		Name:  "mock-service-2",
+		State: "DE-ACTIVATED",
+	},
+}
+
+func (h *Handler) listServices(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		vapi.StatusOK(w, supervisorServices)
+	}
+}
+
+func (h *Handler) getService(w http.ResponseWriter, r *http.Request) {
+	id := path.Base(r.URL.Path)
+	switch r.Method {
+	case http.MethodGet:
+		for _, svc := range supervisorServices {
+			if svc.ID == id {
+				svcInfo := namespace.SupervisorServiceInfo{
+					Name:        svc.Name,
+					State:       svc.State,
+					Description: fmt.Sprintf("Description of %s", svc.ID),
+				}
+				vapi.StatusOK(w, svcInfo)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNotFound)
 	}
 }

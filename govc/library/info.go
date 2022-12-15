@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2018 VMware, Inc. All Rights Reserved.
+Copyright (c) 2018-2022 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@ Examples:
   govc library.info */
   govc device.cdrom.insert -vm $vm -device cdrom-3000 $(govc library.info -L /lib1/item1/file1)
   govc library.info -json | jq .
-  govc library.info /lib1/item1 -json | jq .`
+  govc library.info -json /lib1/item1 | jq .`
 }
 
 type infoResultsWriter struct {
@@ -171,6 +171,7 @@ func (r infoResultsWriter) writeLibrary(
 	fmt.Fprintf(w, "  Description:\t%s\n", v.Description)
 	fmt.Fprintf(w, "  Version:\t%s\n", v.Version)
 	fmt.Fprintf(w, "  Created:\t%s\n", v.CreationTime.Format(time.ANSIC))
+	fmt.Fprintf(w, "  Security Policy ID\t%s\n", v.SecurityPolicyID)
 	fmt.Fprintf(w, "  StorageBackings:\t\n")
 	for _, d := range v.Storage {
 		fmt.Fprintf(w, "    DatastoreID:\t%s\n", d.DatastoreID)
@@ -221,7 +222,12 @@ func (r infoResultsWriter) writeItem(
 	fmt.Fprintf(w, "  Created:\t%s\n", v.CreationTime.Format(time.ANSIC))
 	fmt.Fprintf(w, "  Modified:\t%s\n", v.LastModifiedTime.Format(time.ANSIC))
 	fmt.Fprintf(w, "  Version:\t%s\n", v.Version)
-
+	if v.SecurityCompliance != nil {
+		fmt.Fprintf(w, "  Security Compliance:\t%t\n", *v.SecurityCompliance)
+	}
+	if v.CertificateVerification != nil {
+		fmt.Fprintf(w, "  Certificate Status:\t%s\n", v.CertificateVerification.Status)
+	}
 	if r.cmd.long {
 		fmt.Fprintf(w, "  Datastore Path:\t%s\n", r.cmd.getDatastorePath(res))
 	}
